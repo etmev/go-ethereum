@@ -22,8 +22,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"time"
 	"unicode"
 
+	mlstreamergo "github.com/mevlink/streamer-go"
 	"github.com/urfave/cli/v2"
 
 	"github.com/ethereum/go-ethereum/accounts/external"
@@ -31,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -40,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/naoina/toml"
 )
 
@@ -156,13 +160,41 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 }
 
 // makeFullNode loads geth configuration and creates the Ethereum backend.
-func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
+func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend, *mlstreamergo.Streamer) {
 	stack, cfg := makeConfigNode(ctx)
 	if ctx.IsSet(utils.OverrideShanghai.Name) {
 		v := ctx.Uint64(utils.OverrideShanghai.Name)
 		cfg.Eth.OverrideShanghai = &v
 	}
-	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
+
+	// Configure the Mevlink Streamer
+	mevlinkKeyId := os.Getenv("MEVLINK_API_KEY_ID")
+	mevlinkKeySecret := os.Getenv("MEVLINK_API_KEY_SECRET")
+	if mevlinkKeyId == "" || mevlinkKeySecret == "" {
+		log.Error("Mevlink API Key environment variables not set")
+	}
+	var mlstream = mlstreamergo.NewStreamer(mevlinkKeyId, mevlinkKeySecret, 1)
+
+	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, mlstream)
+
+	// Configure the mevlink onTransaction callback
+	mlstream.OnTransaction(func(txb []byte, noticed, propagated time.Time) {
+		go func() {
+			tx := new(types.Transaction)
+			err := rlp.DecodeBytes(txb, &tx)
+			if err != nil {
+				log.Error("[ mevlink-streamer ] error decoding ml tx")
+			} else {
+				validationErrors := eth.TxPool().AddRemotes([]*types.Transaction{tx})
+				if validationErrors[0] == nil {
+					log.Info("[ mevlink-streamer ] added tx", "hash", tx.Hash(), "noticed", noticed, "propegated", propagated)
+				} else {
+					fmt.Println(validationErrors)
+					log.Info("[ mevlink-streamer ] benign err adding tx", "hash", tx.Hash(), "err", validationErrors[0])
+				}
+			}
+		}()
+	})
 
 	// Configure log filter RPC API.
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
@@ -181,7 +213,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.SyncTargetFlag.Name) && cfg.Eth.SyncMode == downloader.FullSync {
 		utils.RegisterFullSyncTester(stack, eth, ctx.Path(utils.SyncTargetFlag.Name))
 	}
-	return stack, backend
+	return stack, backend, mlstream
 }
 
 // dumpConfig is the dumpconfig command.
