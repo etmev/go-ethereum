@@ -344,6 +344,7 @@ func geth(ctx *cli.Context) error {
 	prepare(ctx)
 	stack, backend, mlstream := makeFullNode(ctx)
 	defer stack.Close()
+	defer mlstream.Stop()
 
 	startNode(ctx, stack, backend, false)
 

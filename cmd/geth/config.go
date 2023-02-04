@@ -170,6 +170,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend, *mlstreamergo.S
 	// Configure the Mevlink Streamer
 	mevlinkKeyId := os.Getenv("MEVLINK_API_KEY_ID")
 	mevlinkKeySecret := os.Getenv("MEVLINK_API_KEY_SECRET")
+	log.Info(mevlinkKeyId, mevlinkKeySecret)
 	if mevlinkKeyId == "" || mevlinkKeySecret == "" {
 		log.Error("Mevlink API Key environment variables not set")
 	}
