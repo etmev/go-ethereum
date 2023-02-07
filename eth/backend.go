@@ -531,6 +531,9 @@ func (s *Ethereum) Stop() error {
 	s.snapDialCandidates.Close()
 	s.handler.Stop()
 
+	// Stop mevlink service
+	s.mlstream.Stop()
+
 	// Then stop everything else.
 	s.bloomIndexer.Close()
 	close(s.closeBloomHandler)

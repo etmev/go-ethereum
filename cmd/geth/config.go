@@ -185,13 +185,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend, *mlstreamergo.S
 				tx := new(types.Transaction)
 				err := rlp.DecodeBytes(txb, &tx)
 				if err != nil {
-					log.Error("[ mevlink-streamer ] error decoding ml tx")
+					log.Error("[ mevlink-streamer ] error decoding ml tx", "err", err)
 				} else {
 					validationErrors := eth.TxPool().AddRemotes([]*types.Transaction{tx})
-					if validationErrors[0] == nil {
-						log.Info("[ mevlink-streamer ] added tx", "hash", tx.Hash(), "noticed", noticed, "propegated", propagated)
-					} else {
-						fmt.Println(validationErrors)
+					if validationErrors[0] != nil {
 						log.Info("[ mevlink-streamer ] benign err adding tx", "hash", tx.Hash(), "err", validationErrors[0])
 					}
 				}
